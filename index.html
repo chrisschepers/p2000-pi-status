@@ -283,11 +283,16 @@ async function refresh() {
 
     const cov = data.coverageLastHour;
     if (cov) {
+      // Noemer = uitzendbare radar-meldingen (niet-uitzendbare eraf), zodat het
+      // percentage echte ontvangst meet i.p.v. bron-scopeverschil.
+      const excl = cov.nonBroadcastExcluded ?? 0;
+      const denom = Math.max(1, cov.radar - excl);
       $('coverage').innerHTML = cov.missedByPi === 0 ? '100<small>%</small>'
-        : `${Math.max(0, 100 - (100 * cov.missedByPi / Math.max(1, cov.radar))).toFixed(1)}<small>%</small>`;
-      $('coveragesub').textContent = cov.missedByPi === 0
-        ? `0 gemist van ${cov.radar}`
-        : `${cov.missedByPi} gemist van ${cov.radar}`;
+        : `${Math.max(0, 100 - (100 * cov.missedByPi / denom)).toFixed(1)}<small>%</small>`;
+      const base = cov.missedByPi === 0
+        ? `0 gemist van ${denom}`
+        : `${cov.missedByPi} gemist van ${denom}`;
+      $('coveragesub').textContent = excl > 0 ? `${base} · ${excl} niet-uitzendbaar` : base;
       $('coveragesub').className = 'sub ' + (cov.missedByPi === 0 ? 'good' : cov.missedByPi <= 2 ? 'warn' : 'crit');
     }
 
