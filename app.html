@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>P2000 Ontvanger — status</title>
+<title>P2000 Alarm — app-statistieken</title>
 <meta name="theme-color" content="#0d0d0d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 <style>
   :root {
     --page:          #f9f9f7;
@@ -59,7 +59,6 @@
                 color: var(--text-secondary); margin-bottom: 14px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
   .dot.good { background: var(--good); }
-  .dot.warning { background: var(--warning); }
   .dot.critical { background: var(--critical); }
 
   .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -70,12 +69,11 @@
     padding: 12px 14px 11px;
   }
   .tile .label { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
-  .tile .value { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+  .tile .value { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
   .tile .value small { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
   .tile .sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
   .tile .sub.good { color: var(--good); }
-  .tile .sub.warn { color: var(--warning); }
-  .tile .sub.crit { color: var(--critical); }
+  .tile.hero .value { font-size: 30px; }
 
   section.chart {
     background: var(--surface-1);
@@ -117,42 +115,52 @@
 </head>
 <body>
   <header>
-    <h1>📡 P2000 Ontvanger</h1>
+    <h1>📈 P2000 Alarm — app</h1>
     <span class="updated" id="updated">—</span>
   </header>
   <div class="nav">
-    <a href="./" class="active">📡 Ontvanger</a>
-    <a href="./app.html">📈 App-stats</a>
+    <a href="./">📡 Ontvanger</a>
+    <a href="./app.html" class="active">📈 App-stats</a>
   </div>
   <div class="statusline"><span class="dot" id="dot"></span><span id="statustext">Laden…</span></div>
 
   <div class="error" id="error"></div>
 
   <div class="tiles">
-    <div class="tile">
-      <div class="label">Temperatuur</div>
-      <div class="value" id="temp">—</div>
-      <div class="sub" id="tempsub"></div>
+    <div class="tile hero">
+      <div class="label">Downloads vandaag</div>
+      <div class="value" id="today">—</div>
+      <div class="sub" id="todaysub"></div>
+    </div>
+    <div class="tile hero">
+      <div class="label">Downloads totaal</div>
+      <div class="value" id="total">—</div>
+      <div class="sub" id="totalsub"></div>
     </div>
     <div class="tile">
-      <div class="label">Aan sinds</div>
-      <div class="value" id="uptime">—</div>
-      <div class="sub" id="uptimesub"></div>
+      <div class="label">Laatste 7 dagen</div>
+      <div class="value" id="week">—</div>
+      <div class="sub" id="weeksub"></div>
     </div>
     <div class="tile">
-      <div class="label">Meldingen (laatste uur)</div>
-      <div class="value" id="lasthour">—</div>
-      <div class="sub" id="lastline"></div>
+      <div class="label">Actief vandaag</div>
+      <div class="value" id="active">—</div>
+      <div class="sub" id="activesub"></div>
     </div>
     <div class="tile">
-      <div class="label">Dekking (laatste uur)</div>
-      <div class="value" id="coverage">—</div>
-      <div class="sub" id="coveragesub"></div>
+      <div class="label">Push aan</div>
+      <div class="value" id="push">—</div>
+      <div class="sub" id="pushsub"></div>
+    </div>
+    <div class="tile">
+      <div class="label">A0-monitors</div>
+      <div class="value" id="vol">—</div>
+      <div class="sub" id="volsub"></div>
     </div>
   </div>
 
   <section class="chart">
-    <h2>Meldingen per uur — afgelopen 24 uur</h2>
+    <h2>Nieuwe installaties per dag — afgelopen 30 dagen</h2>
     <div class="plot" id="plot"></div>
     <div class="baseline"></div>
     <div class="xlabels" id="xlabels"></div>
@@ -162,53 +170,21 @@
     </details>
   </section>
 
-  <div class="tiles" style="margin-top:10px">
-    <div class="tile">
-      <div class="label">Decoder-herstarts</div>
-      <div class="value" id="restarts">—</div>
-    </div>
-    <div class="tile">
-      <div class="label">Wachtrij / fouten</div>
-      <div class="value" id="spool">—</div>
-      <div class="sub" id="spoolsub"></div>
-    </div>
-  </div>
-
-  <div class="foot">Ververst elke 60 s · bron: pi-chris-1 · <span id="gen">—</span></div>
+  <div class="foot">Ververst elke 60 s · App Store + Google Play samen (unieke installaties)</div>
 
 <script>
-const API = 'https://p2000alarm-production.up.railway.app/api/public/pi-status';
-const HOUR_FMT = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
+const API = 'https://p2000alarm-production.up.railway.app/api/public/stats';
+const TIME_FMT = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
+const DAY_FMT = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam' });
+const NUM = (n) => (n ?? 0).toLocaleString('nl-NL');
 const $ = (id) => document.getElementById(id);
 
-function fmtUptime(sec) {
-  if (sec == null) return '—';
-  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d}<small>d</small> ${h}<small>u</small>`;
-  if (h > 0) return `${h}<small>u</small> ${m}<small>m</small>`;
-  return `${m}<small>min</small>`;
-}
-function ago(iso) {
-  if (!iso) return null;
-  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 90) return `${s}s geleden`;
-  if (s < 5400) return `${Math.round(s / 60)}m geleden`;
-  return `${(s / 3600).toFixed(1)}u geleden`;
-}
-
-function renderChart(perHour) {
-  // 24 buckets opbouwen, ontbrekende uren = 0
-  const byHour = new Map(perHour.map((r) => [new Date(r.hour).getTime(), r.n]));
-  const now = new Date(); now.setMinutes(0, 0, 0);
-  const buckets = [];
-  for (let i = 23; i >= 0; i--) {
-    const t = now.getTime() - i * 3600_000;
-    buckets.push({ t, n: byHour.get(t) ?? 0 });
-  }
-  const max = Math.max(1, ...buckets.map((b) => b.n));
+function renderChart(daily) {
+  // Laatste 30 dagen; de dag-strings van de API zijn al NL-datums.
+  const days = (daily || []).slice(-30);
+  const max = Math.max(1, ...days.map((d) => d.count));
   const plot = $('plot');
   plot.innerHTML = '';
-  // recessieve gridlijnen: max en helft
   for (const frac of [0, 0.5]) {
     const g = document.createElement('div');
     g.className = 'gridline';
@@ -221,16 +197,16 @@ function renderChart(perHour) {
   const tip = document.createElement('div');
   tip.className = 'tooltip';
   plot.appendChild(tip);
-  buckets.forEach((b, i) => {
+  days.forEach((d, i) => {
     const col = document.createElement('div');
     col.className = 'col';
     const bar = document.createElement('div');
     bar.className = 'bar';
-    bar.style.height = `${Math.max(1.5, (b.n / max) * 100)}%`;
-    // laatste (lopende) uur is nog onvolledig — gedempt weergeven
-    if (i === buckets.length - 1) bar.style.opacity = '0.45';
+    bar.style.height = `${Math.max(1.5, (d.count / max) * 100)}%`;
+    // vandaag is nog niet compleet — gedempt weergeven
+    if (i === days.length - 1) bar.style.opacity = '0.45';
     col.appendChild(bar);
-    const label = `${HOUR_FMT.format(new Date(b.t)).replace(':00','')}–${HOUR_FMT.format(new Date(b.t + 3600_000)).replace(':00','')} u: ${b.n}`;
+    const label = `${DAY_FMT.format(new Date(d.date + 'T12:00:00'))}: ${NUM(d.count)}`;
     const show = () => {
       document.querySelectorAll('.col.hover').forEach((c) => c.classList.remove('hover'));
       col.classList.add('hover');
@@ -245,76 +221,56 @@ function renderChart(perHour) {
   });
   plot.appendChild(bars);
 
-  const first = HOUR_FMT.format(new Date(buckets[0].t));
-  const mid = HOUR_FMT.format(new Date(buckets[12].t));
-  const last = HOUR_FMT.format(new Date(buckets[23].t));
-  $('xlabels').innerHTML = `<span>${first}</span><span>${mid}</span><span>${last}</span>`;
-
-  $('tabel').innerHTML = buckets.slice().reverse()
-    .map((b) => `<tr><td>${HOUR_FMT.format(new Date(b.t))}</td><td>${b.n}</td></tr>`).join('');
-
-  return buckets;
+  if (days.length) {
+    const f = (s) => DAY_FMT.format(new Date(s + 'T12:00:00'));
+    $('xlabels').innerHTML = `<span>${f(days[0].date)}</span>` +
+      (days.length > 2 ? `<span>${f(days[Math.floor(days.length / 2)].date)}</span>` : '') +
+      `<span>${f(days[days.length - 1].date)}</span>`;
+    $('tabel').innerHTML = days.slice().reverse()
+      .map((d) => `<tr><td>${f(d.date)}</td><td>${NUM(d.count)}</td></tr>`).join('');
+  }
+  return days;
 }
 
 async function refresh() {
   try {
     const res = await fetch(API, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const s = (await res.json()).data;
     $('error').style.display = 'none';
 
-    const rx = data.receivers && data.receivers[0];
-    const hbAge = rx ? rx.heartbeatAgeSec : null;
+    $('dot').className = 'dot good';
+    // Recorddag uit de reeks als context in de statusregel.
+    const days = s.dailyInstalls || [];
+    const record = days.reduce((a, b) => (b.count > (a?.count ?? 0) ? b : a), null);
+    $('statustext').textContent = record
+      ? `Live · record: ${NUM(record.count)} op ${DAY_FMT.format(new Date(record.date + 'T12:00:00'))}`
+      : 'Live gebruikersdata';
 
-    // Status: heartbeat < 3 min = online; < 15 min = haperend; anders offline
-    const dot = $('dot');
-    dot.className = 'dot';
-    if (hbAge != null && hbAge < 180) { dot.classList.add('good'); $('statustext').textContent = '● Online — ontvanger draait'; }
-    else if (hbAge != null && hbAge < 900) { dot.classList.add('warning'); $('statustext').textContent = '▲ Haperend — laatste hartslag ' + Math.round(hbAge / 60) + ' min geleden'; }
-    else { dot.classList.add('critical'); $('statustext').textContent = '✕ Offline — geen hartslag' + (hbAge != null ? ' sinds ' + Math.round(hbAge / 60) + ' min' : ''); }
+    $('today').textContent = NUM(s.newToday);
+    $('todaysub').textContent = `gisteren: ${NUM(s.newYesterday)}`;
+    $('todaysub').className = 'sub' + (s.newToday >= s.newYesterday ? ' good' : '');
+    $('total').textContent = NUM(s.totalDevices);
+    $('totalsub').textContent = s.firstInstallAt
+      ? `sinds ${DAY_FMT.format(new Date(s.firstInstallAt))}` : '';
+    $('week').textContent = NUM(s.newLast7Days);
+    $('weeksub').textContent = `30 dagen: ${NUM(s.newLast30Days)}`;
+    $('active').textContent = NUM(s.activeToday);
+    $('activesub').textContent = `deze week: ${NUM(s.activeLast7Days)}`;
+    $('push').textContent = NUM(s.withPushToken);
+    $('pushsub').textContent = s.totalDevices
+      ? `${Math.round(100 * s.withPushToken / s.totalDevices)}% van alle installaties` : '';
+    $('vol').textContent = NUM(s.volunteers);
+    $('volsub').textContent = `${NUM(s.availableVolunteers)} beschikbaar`;
 
-    if (rx) {
-      $('temp').innerHTML = rx.cpuTemp != null ? `${rx.cpuTemp.toFixed(1)}<small> °C</small>` : '—';
-      $('tempsub').textContent = rx.cpuTemp == null ? '' : rx.cpuTemp < 70 ? 'gezond' : rx.cpuTemp < 80 ? 'warm' : 'te heet!';
-      $('tempsub').className = 'sub ' + (rx.cpuTemp == null ? '' : rx.cpuTemp < 70 ? 'good' : rx.cpuTemp < 80 ? 'warn' : 'crit');
-      $('uptime').innerHTML = fmtUptime(rx.uptimeSec);
-      $('uptimesub').textContent = `${rx.linesDecoded.toLocaleString('nl-NL')} regels sinds start`;
-      $('lastline').textContent = rx.lastLineAt ? `laatste melding ${ago(rx.lastLineAt)}` : '';
-      $('restarts').textContent = rx.decoderRestarts ?? '—';
-      $('spool').textContent = `${rx.spooled} / ${rx.sendErrors}`;
-      $('spoolsub').textContent = 'wachtend / verzendfouten';
-    }
-
-    const buckets = renderChart(data.linesPerHour || []);
-    // "laatste uur" = som van de twee laatste buckets naar rato is overkill;
-    // toon het afgelopen volle uur + lopend uur samen als indicatie
-    const lastFull = buckets[buckets.length - 2]?.n ?? 0;
-    const running = buckets[buckets.length - 1]?.n ?? 0;
-    $('lasthour').innerHTML = `${lastFull + running}`;
-
-    const cov = data.coverageLastHour;
-    if (cov) {
-      // Noemer = uitzendbare radar-meldingen (niet-uitzendbare eraf), zodat het
-      // percentage echte ontvangst meet i.p.v. bron-scopeverschil.
-      const excl = cov.nonBroadcastExcluded ?? 0;
-      const denom = Math.max(1, cov.radar - excl);
-      $('coverage').innerHTML = cov.missedByPi === 0 ? '100<small>%</small>'
-        : `${Math.max(0, 100 - (100 * cov.missedByPi / denom)).toFixed(1)}<small>%</small>`;
-      const base = cov.missedByPi === 0
-        ? `0 gemist van ${denom}`
-        : `${cov.missedByPi} gemist van ${denom}`;
-      $('coveragesub').textContent = excl > 0 ? `${base} · ${excl} niet-uitzendbaar` : base;
-      $('coveragesub').className = 'sub ' + (cov.missedByPi === 0 ? 'good' : cov.missedByPi <= 2 ? 'warn' : 'crit');
-    }
-
-    $('updated').textContent = 'ververst ' + HOUR_FMT.format(new Date());
-    $('gen').textContent = 'server ' + (ago(data.generatedAt) ?? '—');
+    renderChart(days);
+    $('updated').textContent = 'ververst ' + TIME_FMT.format(new Date());
   } catch (err) {
     const e = $('error');
     e.style.display = 'block';
-    e.textContent = 'Kan de backend niet bereiken (' + err.message + '). Is de server-kant al live? Probeer het straks opnieuw.';
+    e.textContent = 'Kan de backend niet bereiken (' + err.message + '). Probeer het straks opnieuw.';
     $('dot').className = 'dot critical';
-    $('statustext').textContent = 'Onbekend — geen verbinding met backend';
+    $('statustext').textContent = 'Geen verbinding met backend';
   }
 }
 
