@@ -172,6 +172,11 @@
       <div class="value" id="spool">—</div>
       <div class="sub" id="spoolsub"></div>
     </div>
+    <div class="tile">
+      <div class="label">Offline-alarm</div>
+      <div class="value" id="watchdog">—</div>
+      <div class="sub" id="watchdogsub"></div>
+    </div>
   </div>
 
   <div class="foot">Ververst elke 60 s · bron: pi-chris-1 · <span id="gen">—</span></div>
@@ -305,6 +310,20 @@ async function refresh() {
         : `${cov.missedByPi} gemist van ${denom}`;
       $('coveragesub').textContent = excl > 0 ? `${base} · ${excl} niet-uitzendbaar` : base;
       $('coveragesub').className = 'sub ' + (cov.missedByPi === 0 ? 'good' : cov.missedByPi <= 2 ? 'warn' : 'crit');
+    }
+
+    // Offline-alarm (backend-watchdog → push naar volgers van capcode 9999901)
+    const wd = data.watchdog;
+    if (wd) {
+      const labels = { none: '✓ waakzaam', heartbeat: '⚠ ALARM: Pi offline', lines: '⚠ ALARM: decoder stil' };
+      $('watchdog').textContent = labels[wd.alarm] ?? wd.alarm;
+      const bemand = wd.subscribers > 0
+        ? `${wd.subscribers} bewaker${wd.subscribers === 1 ? '' : 's'} geabonneerd`
+        : 'nog niemand geabonneerd — volg capcode 9999901 in de app';
+      $('watchdogsub').textContent = wd.alarm === 'none'
+        ? bemand
+        : `sinds ${ago(wd.downSince) ?? '?'} · ${bemand}`;
+      $('watchdogsub').className = 'sub ' + (wd.alarm !== 'none' ? 'crit' : wd.subscribers > 0 ? 'good' : 'warn');
     }
 
     $('updated').textContent = 'ververst ' + HOUR_FMT.format(new Date());
