@@ -102,6 +102,21 @@
   }
   details { margin-top: 10px; }
   summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+  /* Push-gezondheid */
+  .rows { margin-top: 4px; }
+  .row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
+         border-top: 1px solid var(--grid); font-size: 13px; }
+  .row:first-child { border-top: none; }
+  .row .when { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+  .row .what { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .badge { margin-left: auto; flex: none; font-size: 12px; font-weight: 600;
+                border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; }
+  .badge.good { color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+  .badge.warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+  .badge.bad  { color: var(--critical); background: color-mix(in srgb, var(--critical) 14%, transparent); }
+  .watchline { display: flex; align-items: center; gap: 7px; font-size: 13px;
+               color: var(--text-secondary); margin-top: 8px; flex-wrap: wrap; }
+  .watchline .dot { width: 8px; height: 8px; }
   table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 13px; }
   td { padding: 3px 6px; border-top: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
   td:last-child { text-align: right; }
@@ -167,6 +182,28 @@
     <details>
       <summary>Bekijk als tabel</summary>
       <table id="tabel"></table>
+    </details>
+  </section>
+
+  <section class="chart" id="pushsec">
+    <h2>Push-gezondheid — vandaag</h2>
+    <div class="tiles" style="margin-top:2px">
+      <div class="tile">
+        <div class="label">Pushes verstuurd</div>
+        <div class="value" id="p_sent">—</div>
+        <div class="sub" id="p_sentsub"></div>
+      </div>
+      <div class="tile">
+        <div class="label">Gebruikers bereikt</div>
+        <div class="value" id="p_reach">—</div>
+        <div class="sub" id="p_reachsub"></div>
+      </div>
+    </div>
+    <div class="watchline" id="p_watch"><span class="dot" id="p_dot"></span><span id="p_watchtext">Laden…</span></div>
+    <div class="rows" id="p_grip" style="margin-top:10px"></div>
+    <details>
+      <summary>Per type (vandaag · gisteren)</summary>
+      <table id="p_types"></table>
     </details>
   </section>
 
@@ -274,9 +311,89 @@ async function refresh() {
   }
 }
 
+// ── Push-gezondheid ──────────────────────────────────────────────────────────
+const PUSH_API = 'https://p2000alarm-production.up.railway.app/api/public/push-stats';
+const TYPE_LABELS = {
+  capcode: 'Capcode-volgers', filter: 'Filters (stad/straal)', cancel: 'Intrekkingen',
+  reanimation: 'Reanimatie (A0)', grip: 'GRIP',
+};
+function typeLabel(t) {
+  if (TYPE_LABELS[t]) return TYPE_LABELS[t];
+  const m = t.match(/^esc-1([1-5])$/);
+  if (m) return `GRIP ${m[1]}`;
+  if (t === 'esc-1') return 'Opschaling: middel';
+  if (t === 'esc-2') return 'Opschaling: groot';
+  if (t === 'esc-3') return 'Opschaling: zeer groot';
+  return t;
+}
+
+async function refreshPush() {
+  try {
+    const res = await fetch(PUSH_API, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const p = (await res.json()).data;
+
+    // Tegels: totalen van vandaag.
+    const today = (p.byType || []).filter((t) => t.day === 'today');
+    const ok = today.reduce((a, t) => a + t.ok, 0);
+    const failed = today.reduce((a, t) => a + t.failed, 0);
+    $('p_sent').textContent = NUM(ok);
+    $('p_sentsub').textContent = failed > 0 ? `${NUM(failed)} gefaald` : 'geen gefaald';
+    $('p_sentsub').className = 'sub' + (failed > 0 ? '' : ' good');
+    $('p_reach').textContent = NUM(p.usersReachedToday);
+    $('p_reachsub').textContent = 'unieke gebruikers vandaag';
+
+    // Waakhond: alle fout-/onderdrukkings-tellers sinds de laatste backend-start.
+    const c = p.counters || {}; const e = p.expo || {};
+    const issues = [];
+    if (c.staleSuppressedGrip) issues.push(`${c.staleSuppressedGrip}× GRIP onderdrukt (te oud)`);
+    if (c.notifyErrors) issues.push(`${c.notifyErrors}× notify-fout`);
+    if (c.unexpectedErrors) issues.push(`${c.unexpectedErrors}× procesfout`);
+    if ((e.apiErrors ?? 0) + (e.requestErrors ?? 0) > 0) issues.push(`${e.apiErrors + e.requestErrors}× Expo-fout`);
+    if (c.gripRescues) issues.push(`${c.gripRescues}× GRIP gered door vangnet`);
+    const info = [];
+    if (c.staleSuppressed) info.push(`${NUM(c.staleSuppressed)}× oude melding onderdrukt`);
+    if (c.geocodeHeals) info.push(`${NUM(c.geocodeHeals)} locaties geheeld`);
+    if (e.deadTokensCleared) info.push(`${NUM(e.deadTokensCleared)} verwijderde apps opgeruimd`);
+    const since = p.sinceRestart ? TIME_FMT.format(new Date(p.sinceRestart)) : '—';
+    $('p_dot').className = 'dot ' + (issues.length ? 'critical' : 'good');
+    $('p_watchtext').textContent = issues.length
+      ? issues.join(' · ') + (info.length ? ' · ' + info.join(' · ') : '')
+      : `Geen problemen sinds ${since}` + (info.length ? ' · ' + info.join(' · ') : '');
+
+    // GRIP-audit: elke GRIP van de laatste 24u met push-resultaat.
+    const grip = $('p_grip');
+    const audit = p.gripAudit || [];
+    grip.innerHTML = audit.length === 0
+      ? '<div class="row"><span class="what">Geen GRIP-meldingen in de laatste 24 uur</span></div>'
+      : audit.map((g) => {
+          const badge = g.escOk > 0
+            ? `<span class="badge good">✓ ${NUM(g.escOk)}</span>`
+            : g.escFailed > 0
+              ? `<span class="badge warn">⚠ ${NUM(g.escFailed)} gefaald</span>`
+              : '<span class="badge bad">GEEN PUSH</span>';
+          const what = `${g.city || '?'} — ${(g.raw || '').replace(/</g, '&lt;')}`;
+          return `<div class="row"><span class="when">${g.eventAt}</span><span class="what">${what}</span>${badge}</div>`;
+        }).join('');
+
+    // Per-type tabel: vandaag · gisteren.
+    const yesterday = Object.fromEntries((p.byType || []).filter((t) => t.day === 'yesterday').map((t) => [t.type, t]));
+    $('p_types').innerHTML = today.map((t) => {
+      const y = yesterday[t.type];
+      const fail = t.failed > 0 ? ` <span style="color:var(--critical)">(${NUM(t.failed)}✗)</span>` : '';
+      return `<tr><td>${typeLabel(t.type)}</td><td>${NUM(t.ok)}${fail} · ${y ? NUM(y.ok) : '0'}</td></tr>`;
+    }).join('') || '<tr><td>Nog geen pushes vandaag</td><td></td></tr>';
+  } catch (err) {
+    $('p_dot').className = 'dot critical';
+    $('p_watchtext').textContent = 'Push-stats niet bereikbaar (' + err.message + ')';
+  }
+}
+
 refresh();
+refreshPush();
 setInterval(refresh, 60_000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+setInterval(refreshPush, 60_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); refreshPush(); } });
 </script>
 </body>
 </html>
