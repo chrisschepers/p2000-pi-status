@@ -89,8 +89,16 @@
                    color: var(--muted); font-variant-numeric: tabular-nums; }
   .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
   .col { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
-  .bar { width: 100%; background: var(--series-1); border-radius: 4px 4px 0 0; min-height: 2px; }
+  .bar { width: 100%; background: var(--series-1); border-radius: 4px 4px 0 0; min-height: 2px;
+         position: relative; }
+  /* Donkerder deel onderin de staaf = de installaties die push aan hebben. */
+  .bar .push { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0 0 4px 4px;
+               background: rgba(0,0,0,0.42); }
   .col.hover .bar { filter: brightness(1.25); }
+  .legenda { display: flex; gap: 14px; align-items: center; font-size: 11px;
+             color: var(--muted); margin-top: 8px; }
+  .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+               margin-right: 5px; vertical-align: -1px; }
   .baseline { border-top: 1px solid var(--baseline); margin-top: 0; }
   .xlabels { display: flex; justify-content: space-between; font-size: 10px;
              color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -179,6 +187,15 @@
     <div class="plot" id="plot"></div>
     <div class="baseline"></div>
     <div class="xlabels" id="xlabels"></div>
+    <div class="legenda">
+      <span><i style="background:var(--series-1)"></i>installaties</span>
+      <span><i style="background:#4a5568"></i>waarvan push aan</span>
+    </div>
+    <div class="sub" style="margin-top:6px">
+      Let op: van 13 t/m 17 aug telde deze reeks alleen installaties die
+      meldingen aanzetten. De app vroeg de permissie toen pas later en meldde
+      zich zonder token niet aan; sinds de fix telt hij weer elke installatie.
+    </div>
     <details>
       <summary>Bekijk als tabel</summary>
       <table id="tabel"></table>
@@ -242,8 +259,17 @@ function renderChart(daily) {
     bar.style.height = `${Math.max(1.5, (d.count / max) * 100)}%`;
     // vandaag is nog niet compleet — gedempt weergeven
     if (i === days.length - 1) bar.style.opacity = '0.45';
+    // Deel met push aan als donkerder blok onderin dezelfde staaf.
+    if (typeof d.withPush === 'number' && d.count > 0) {
+      const push = document.createElement('div');
+      push.className = 'push';
+      push.style.height = `${Math.min(100, (d.withPush / d.count) * 100)}%`;
+      bar.appendChild(push);
+    }
+    const pushDeel = typeof d.withPush === 'number'
+      ? ` · ${NUM(d.withPush)} met push` : '';
     col.appendChild(bar);
-    const label = `${DAY_FMT.format(new Date(d.date + 'T12:00:00'))}: ${NUM(d.count)}`;
+    const label = `${DAY_FMT.format(new Date(d.date + 'T12:00:00'))}: ${NUM(d.count)}${pushDeel}`;
     const show = () => {
       document.querySelectorAll('.col.hover').forEach((c) => c.classList.remove('hover'));
       col.classList.add('hover');
@@ -296,7 +322,16 @@ async function refresh() {
     $('activesub').textContent = `deze week: ${NUM(s.activeLast7Days)}`;
     $('push').textContent = NUM(s.withPushToken);
     $('pushsub').textContent = s.totalDevices
-      ? `${Math.round(100 * s.withPushToken / s.totalDevices)}% van alle installaties` : '';
+      ? `${Math.round(100 * s.withPushToken / s.totalDevices)}% van alle installaties`
+      : '';
+    // Nieuwe installaties van de laatste 7 dagen: hoeveel daarvan zetten push
+    // aan? Dat is het cijfer dat sinds de just-in-time-permissie telt.
+    const week = (s.dailyInstalls || []).slice(-7);
+    const weekTot = week.reduce((a, d) => a + d.count, 0);
+    const weekPush = week.reduce((a, d) => a + (d.withPush ?? 0), 0);
+    if (weekTot > 0 && week.some((d) => typeof d.withPush === 'number')) {
+      $('pushsub').textContent += ` · nieuw deze week: ${Math.round(100 * weekPush / weekTot)}%`;
+    }
     $('vol').textContent = NUM(s.volunteers);
     $('volsub').textContent = `${NUM(s.availableVolunteers)} beschikbaar`;
 
