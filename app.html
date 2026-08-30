@@ -256,6 +256,7 @@ const TIME_FMT = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-
 const DAY_FMT = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam' });
 const NUM = (n) => (n ?? 0).toLocaleString('nl-NL');
 const $ = (id) => document.getElementById(id);
+let verouderd = null;   // tijdstempel als de server oude cijfers teruggaf
 
 function renderChart(daily) {
   // Laatste 30 dagen; de dag-strings van de API zijn al NL-datums.
@@ -323,16 +324,23 @@ async function refresh() {
   try {
     const res = await fetch(API, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const s = (await res.json()).data;
+    const body = await res.json();
+    const s = body.data;
     $('error').style.display = 'none';
 
-    $('dot').className = 'dot good';
+    // De server stuurt "stale" mee als hij de database even niet kon
+    // bevragen en terugvalt op zijn laatste cijfers. Dat is geen storing,
+    // maar het moet er wel bij staan.
+    verouderd = body.stale ? body.generatedAt : null;
+    $('dot').className = verouderd ? 'dot warning' : 'dot good';
     // Recorddag uit de reeks als context in de statusregel.
     const days = s.dailyInstalls || [];
     const record = days.reduce((a, b) => (b.count > (a?.count ?? 0) ? b : a), null);
-    $('statustext').textContent = record
-      ? `Live · record: ${NUM(record.count)} op ${DAY_FMT.format(new Date(record.date + 'T12:00:00'))}`
-      : 'Live gebruikersdata';
+    $('statustext').textContent = verouderd
+      ? `Cijfers van ${TIME_FMT.format(new Date(verouderd))} · de server kon de database even niet bevragen`
+      : record
+        ? `Live · record: ${NUM(record.count)} op ${DAY_FMT.format(new Date(record.date + 'T12:00:00'))}`
+        : 'Live gebruikersdata';
 
     $('today').textContent = NUM(s.newToday);
     $('todaysub').textContent = `gisteren: ${NUM(s.newYesterday)}`;
