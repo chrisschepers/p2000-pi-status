@@ -192,7 +192,7 @@
       <span><i style="background:var(--series-1)"></i>installaties</span>
       <span><i style="background:#4a5568"></i>waarvan push aan</span>
     </div>
-    <div class="sub" style="margin-top:6px">
+    <div class="sub" id="pushnoot" style="margin-top:6px">
       Let op: sinds 13 aug telt deze reeks alleen installaties die meldingen
       aanzetten. De app vraagt de permissie pas als je iets aanzet en meldde
       zich zonder push-token niet aan. De server accepteert dat nu wel (17 aug);
@@ -460,6 +460,10 @@ if (!HUIDIG.a0) $('voltegel').style.display = 'none';
 // splitsen; op het tabblad van de kleine app zou dat cijfer over de verkeerde
 // app gaan.
 if (!HUIDIG.push) $('pushsec').style.display = 'none';
+// Die toelichting gaat over de registratie van de grote app; 112 Meldingen
+// meldt zich wél zonder push-token aan (nagemeten: 32 van de 89), dus daar is
+// de reeks compleet.
+if (!HUIDIG.push) $('pushnoot').style.display = 'none';
 
 refresh();
 if (HUIDIG.push) refreshPush();
