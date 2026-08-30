@@ -48,7 +48,7 @@
   header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
   h1 { font-size: 19px; font-weight: 650; }
   .updated { margin-left: auto; font-size: 12px; color: var(--muted); }
-  .nav { display: flex; gap: 8px; margin-bottom: 12px; }
+  .nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .nav a {
     font-size: 12px; color: var(--text-secondary); text-decoration: none;
     border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
@@ -138,12 +138,13 @@
 </head>
 <body>
   <header>
-    <h1>📈 P2000 Alarm — app</h1>
+    <h1 id="titel">📈 P2000 Alarm — app</h1>
     <span class="updated" id="updated">—</span>
   </header>
   <div class="nav">
     <a href="./">📡 Ontvanger</a>
-    <a href="./app.html" class="active">📈 App-stats</a>
+    <a href="./app.html" id="tab-p2000">📈 Alarmeringen P2000</a>
+    <a href="./app.html?app=m112" id="tab-m112">🚨 112 Meldingen</a>
   </div>
   <div class="statusline"><span class="dot" id="dot"></span><span id="statustext">Laden…</span></div>
 
@@ -175,7 +176,7 @@
       <div class="value" id="push">—</div>
       <div class="sub" id="pushsub"></div>
     </div>
-    <div class="tile">
+    <div class="tile" id="voltegel">
       <div class="label">A0-monitors</div>
       <div class="value" id="vol">—</div>
       <div class="sub" id="volsub"></div>
@@ -225,10 +226,32 @@
     </details>
   </section>
 
-  <div class="foot">Ververst elke 60 s · App Store + Google Play samen (unieke installaties)</div>
+  <div class="foot" id="voet">Ververst elke 60 s · App Store + Google Play samen (unieke installaties)</div>
 
 <script>
-const API = 'https://p2000alarm-production.up.railway.app/api/public/stats';
+// Beide apps zitten in dezelfde users-tabel; de backend scheidt ze aan de
+// vorm van device_id ("m112-..." tegen "did_...") en levert dus per app
+// dezelfde velden. Vandaar één pagina met een parameter in plaats van twee
+// bestanden die uit elkaar gaan lopen.
+const APP = new URLSearchParams(location.search).get('app') === 'm112' ? 'm112' : 'p2000';
+const APPS = {
+  p2000: {
+    titel: '📈 P2000 Alarm — app',
+    paginatitel: 'P2000 Alarm — app-statistieken',
+    voet: 'Ververst elke 60 s · App Store + Google Play samen (unieke installaties)',
+    a0: true,
+    push: true,
+  },
+  m112: {
+    titel: '🚨 112 Meldingen — app',
+    paginatitel: '112 Meldingen — app-statistieken',
+    voet: 'Ververst elke 60 s · App Store + gesloten Android-test (unieke installaties)',
+    a0: false,
+    push: false,
+  },
+};
+const HUIDIG = APPS[APP];
+const API = 'https://p2000alarm-production.up.railway.app/api/public/stats?app=' + APP;
 const TIME_FMT = new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
 const DAY_FMT = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam' });
 const NUM = (n) => (n ?? 0).toLocaleString('nl-NL');
@@ -425,11 +448,28 @@ async function refreshPush() {
   }
 }
 
+// De pagina naar de gekozen app zetten voordat de eerste cijfers binnenkomen.
+document.title = HUIDIG.paginatitel;
+$('titel').textContent = HUIDIG.titel;
+$('voet').textContent = HUIDIG.voet;
+$('tab-' + APP).classList.add('active');
+// De A0-monitor bestaat alleen in de grote app; een tegel die per definitie
+// nul toont, zegt niets.
+if (!HUIDIG.a0) $('voltegel').style.display = 'none';
+// Push-gezondheid komt van de server als geheel en is niet per app te
+// splitsen; op het tabblad van de kleine app zou dat cijfer over de verkeerde
+// app gaan.
+if (!HUIDIG.push) $('pushsec').style.display = 'none';
+
 refresh();
-refreshPush();
+if (HUIDIG.push) refreshPush();
 setInterval(refresh, 60_000);
-setInterval(refreshPush, 60_000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); refreshPush(); } });
+if (HUIDIG.push) setInterval(refreshPush, 60_000);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refresh();
+  if (HUIDIG.push) refreshPush();
+});
 </script>
 </body>
 </html>
